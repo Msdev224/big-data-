@@ -5,13 +5,13 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+
+logger = logging.getLogger(__name__)
 
 
 PROJECT_ROOT = Path("/opt/airflow/project")
