@@ -8,14 +8,16 @@ import pandas as pd
 import plotly.express as px
 import snowflake.connector
 import streamlit as st
+from config import get_snowflake_config
 from snowflake.connector.errors import DatabaseError, OperationalError
 
 logger = logging.getLogger(__name__)
 
-SNOWFLAKE_LOGIN_TIMEOUT = int(os.getenv("SNOWFLAKE_LOGIN_TIMEOUT", "30"))
-SNOWFLAKE_NETWORK_TIMEOUT = int(os.getenv("SNOWFLAKE_NETWORK_TIMEOUT", "60"))
-SNOWFLAKE_MAX_RETRIES = int(os.getenv("SNOWFLAKE_MAX_RETRIES", "3"))
-SNOWFLAKE_RETRY_BACKOFF = float(os.getenv("SNOWFLAKE_RETRY_BACKOFF", "2"))
+_SF_CFG = get_snowflake_config()
+SNOWFLAKE_LOGIN_TIMEOUT = _SF_CFG["login_timeout"]
+SNOWFLAKE_NETWORK_TIMEOUT = _SF_CFG["network_timeout"]
+SNOWFLAKE_MAX_RETRIES = _SF_CFG["max_retries"]
+SNOWFLAKE_RETRY_BACKOFF = _SF_CFG["retry_backoff"]
 
 st.set_page_config(page_title="Bookshop Analytics", layout="wide")
 st.title("Dashboard Big Data - Bookshop")
