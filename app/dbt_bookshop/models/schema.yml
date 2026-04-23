@@ -1,0 +1,95 @@
+version: 2
+
+models:
+  - name: stg_ventes
+    columns:
+      - name: id
+        tests: [not_null, unique]
+      - name: facture_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_factures')
+              field: id
+      - name: book_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_books')
+              field: id
+  - name: stg_factures
+    columns:
+      - name: id
+        tests: [not_null, unique]
+      - name: customer_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_customers')
+              field: id
+  - name: stg_books
+    columns:
+      - name: id
+        tests: [not_null, unique]
+      - name: category_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_category')
+              field: id
+  - name: stg_customers
+    columns:
+      - name: id
+        tests: [not_null, unique]
+  - name: stg_category
+    columns:
+      - name: id
+        tests: [not_null, unique]
+  - name: dim_customers
+    columns:
+      - name: id
+        tests: [not_null, unique]
+  - name: dim_books
+    columns:
+      - name: id
+        tests: [not_null, unique]
+  - name: dim_category
+    columns:
+      - name: id
+        tests: [not_null, unique]
+  - name: fact_ventes
+    columns:
+      - name: id
+        tests: [not_null, unique]
+      - name: facture_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('fact_factures')
+              field: id
+      - name: book_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_books')
+              field: id
+  - name: fact_factures
+    columns:
+      - name: id
+        tests: [not_null, unique]
+      - name: customer_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customers')
+              field: id
+  - name: obt_sales
+    columns:
+      - name: vente_id
+        tests: [not_null, unique]
+      - name: facture_id
+        tests: [not_null]
+      - name: book_code
+        tests: [not_null]
+      - name: customer_code
+        tests: [not_null]

@@ -1,0 +1,7 @@
+apache-airflow-providers-postgres
+apache-airflow-providers-snowflake
+python-dotenv
+psycopg2-binary
+snowflake-connector-python[pandas]
+pandas
+PyYAML

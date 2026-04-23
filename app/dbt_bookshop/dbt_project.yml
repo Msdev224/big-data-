@@ -1,0 +1,22 @@
+name: dbt_bookshop
+version: 1.0.0
+config-version: 2
+
+profile: dbt_bookshop
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  dbt_bookshop:
+    staging:
+      +materialized: table
+      +schema: STAGGING
+    warehouse:
+      +materialized: table
+      +schema: WAREHOUSE
+    marts:
+      +materialized: table
+      +schema: MARTS

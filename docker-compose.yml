@@ -1,0 +1,117 @@
+services:
+  postgres-source:
+    image: postgres:15
+    container_name: bookshop-postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_source_data:/var/lib/postgresql/data
+      - ./scripts/postgres_init.sh:/docker-entrypoint-initdb.d/00_postgres_init.sh:ro
+      - ./sql/postgres:/seed/sql:ro
+
+  airflow-init:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    container_name: bookshop-airflow-init
+    depends_on:
+      - postgres-source
+    env_file:
+      - .env
+    environment:
+      AIRFLOW_HOME: /opt/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-source:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      _PIP_ADDITIONAL_REQUIREMENTS: ""
+      POSTGRES_HOST: postgres-source
+    volumes:
+      - ./:/opt/airflow/project
+      - airflow_logs:/opt/airflow/logs
+    entrypoint: /bin/bash
+    command:
+      - -lc
+      - |
+        airflow db migrate && \
+        airflow users create \
+          --username "${AIRFLOW_ADMIN_USERNAME:-admin}" \
+          --password "${AIRFLOW_ADMIN_PASSWORD:-admin}" \
+          --firstname "${AIRFLOW_ADMIN_FIRSTNAME:-Admin}" \
+          --lastname "${AIRFLOW_ADMIN_LASTNAME:-User}" \
+          --role Admin \
+          --email "${AIRFLOW_ADMIN_EMAIL:-admin@example.com}" || true
+
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    container_name: bookshop-airflow-webserver
+    restart: unless-stopped
+    depends_on:
+      - postgres-source
+      - airflow-init
+    env_file:
+      - .env
+    environment:
+      AIRFLOW_HOME: /opt/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-source:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__RBAC: "true"
+      POSTGRES_HOST: postgres-source
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./:/opt/airflow/project
+      - ./airflow/dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+    command: webserver
+
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    container_name: bookshop-airflow-scheduler
+    restart: unless-stopped
+    depends_on:
+      - postgres-source
+      - airflow-init
+    env_file:
+      - .env
+    environment:
+      AIRFLOW_HOME: /opt/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-source:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      POSTGRES_HOST: postgres-source
+    volumes:
+      - ./:/opt/airflow/project
+      - ./airflow/dags:/opt/airflow/dags
+      - airflow_logs:/opt/airflow/logs
+    command: scheduler
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: bookshop-streamlit
+    restart: unless-stopped
+    depends_on:
+      - postgres-source
+    env_file:
+      - .env
+    ports:
+      - "${STREAMLIT_SERVER_PORT:-8501}:8501"
+    volumes:
+      - ./:/workspace
+
+volumes:
+  postgres_source_data:
+  airflow_logs:
