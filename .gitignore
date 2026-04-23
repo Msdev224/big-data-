@@ -42,3 +42,7 @@ airflow/plugins/__pycache__/
 # Misc
 .swift-module-cache/
 *.log
+
+# Academic / project docs (not versioned)
+docs/
+diagram_bigdata_m2_docx.pdf
