@@ -5,11 +5,12 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
+
+from airflow import DAG
 
 logger = logging.getLogger(__name__)
 
