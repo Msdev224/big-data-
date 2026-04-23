@@ -1,200 +1,232 @@
-# 📚 Projet Big Data M2 — Bookshop
+# 📚 Bookshop Big Data
 
-Pipeline data complet d'une librairie : **ingestion → entrepôt cloud → transformations → visualisation**, orchestré automatiquement.
+Pipeline Big Data de bout en bout pour une librairie : ingestion depuis PostgreSQL,
+entrepôt analytique Snowflake modélisé avec dbt, dashboard Streamlit, le tout
+orchestré par Airflow et déployable en une commande avec Docker Compose.
 
-```
-PostgreSQL (source locale)
-        │
-        ▼  Airflow (ingestion)
-Snowflake RAW
-        │
-        ▼  dbt (staging → warehouse → marts)
-Snowflake WAREHOUSE / MARTS
-        │
-        ▼
-Streamlit (dashboard)
-```
+> **Projet académique — Master 2 Big Data · Mamadou Saidou Bah · Avril 2026**
 
 ---
 
-## 🧱 Stack
+## 🎯 Ce que fait le projet
 
-| Couche | Technologie |
-|---|---|
-| Source transactionnelle | PostgreSQL 15 |
-| Data warehouse | Snowflake |
-| Transformations SQL | dbt-core 1.9 + dbt-snowflake |
-| Orchestration | Apache Airflow 2.10 (LocalExecutor) |
-| Dashboard | Streamlit + Plotly |
-| Conteneurisation | Docker Compose |
+```
+┌──────────────┐   ┌──────────┐   ┌────────────────────────────────────┐   ┌────────────┐
+│ PostgreSQL   │──▶│ Airflow  │──▶│ Snowflake                          │──▶│ Streamlit  │
+│ (OLTP, 5 tb) │   │ (4 tasks)│   │ RAW → STAGGING → WAREHOUSE → MARTS │   │ (Plotly)   │
+└──────────────┘   └──────────┘   └────────────────────────────────────┘   └────────────┘
+                                              ▲
+                                              │
+                                          dbt build
+                                     (modèles + tests)
+```
+
+- **Source** PostgreSQL 15 (5 tables transactionnelles).
+- **Orchestration** Apache Airflow 2.10 (1 DAG, 4 tâches).
+- **Entrepôt** Snowflake (trial AWS eu-west-3), 4 schémas.
+- **Transformations** dbt-core 1.9 + dbt-snowflake 1.9, 14 modèles, tests `not_null` / `unique` / `relationships`.
+- **Restitution** Streamlit + Plotly avec cache, retries et gestion des timeouts.
+- **Qualité** ruff + pytest + `dbt parse` via GitHub Actions.
 
 ---
 
-## 📁 Arborescence
-
-```
-.
-├── app/
-│   ├── dashboard.py            # Dashboard Streamlit (Plotly)
-│   ├── dbt_bookshop/           # Projet dbt (staging / warehouse / marts)
-│   └── Dockerfile              # Image Streamlit
-├── airflow/
-│   ├── dags/bookshop_pipeline.py   # DAG principal
-│   ├── Dockerfile              # Image Airflow (+ venv dbt isolé)
-│   └── requirements-airflow.txt
-├── sql/
-│   ├── postgres/               # Schéma + seed de la source
-│   └── snowflake/              # DDL RAW + requêtes de vérification
-├── scripts/                    # Helpers bash (connexions, dbt, checks)
-├── tests/                      # pytest (DAG, dashboard config)
-├── docs/                       # Guides, rapport, présentation
-├── docker-compose.yml
-├── Makefile
-└── .env.example
-```
-
----
-
-## 🚀 Démarrage rapide (Docker)
+## 🚀 Démarrage rapide
 
 ### Prérequis
-- Docker Desktop ≥ 24
-- Un compte Snowflake trial (voir [docs/setup_snowflake.md](docs/setup_snowflake.md))
-- 4 Go de RAM libre
 
-### 1. Préparer `.env`
+| Outil | Version mini | Vérif |
+|---|---|---|
+| Docker Desktop | 24+ | `docker --version` |
+| Docker Compose | v2 | `docker compose version` |
+| Python (optionnel, hôte) | 3.11 | `python3 --version` |
+| Compte Snowflake | trial 30 jours | [signup.snowflake.com](https://signup.snowflake.com/) |
+
+### Configuration en 3 étapes
 
 ```bash
+# 1. Cloner
+git clone https://github.com/Msdev224/big-data-.git bookshop-bigdata
+cd bookshop-bigdata
+
+# 2. Créer le fichier d'env local
 cp .env.example .env
-```
+# Éditer .env et renseigner les variables SNOWFLAKE_* (cf. docs/setup_snowflake.md)
+# Airflow Fernet key à générer avec :
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 
-Puis **générer les secrets** :
-
-```bash
-# Fernet key Airflow
-python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-
-# Mots de passe aléatoires
-openssl rand -base64 24
-```
-
-Reporte les valeurs dans `.env`. Les 3 lignes `SNOWFLAKE_ACCOUNT/USER/PASSWORD` doivent contenir **tes vrais credentials** (voir guide Snowflake).
-
-### 2. Construire + démarrer
-
-```bash
+# 3. Démarrer la stack
 make up
 ```
 
-Équivalent à :
-```bash
-docker compose up --build airflow-init
-docker compose up --build -d postgres-source airflow-webserver airflow-scheduler streamlit
-```
+`make up` lance **4 conteneurs** : `postgres-source`, `airflow-webserver`, `airflow-scheduler`, `streamlit`.
 
-### 3. Créer les connexions Airflow
+### Accès aux UIs
 
-```bash
-make conns
-```
+| Service | URL | Identifiants |
+|---|---|---|
+| Airflow | http://localhost:8080 | `admin` / `AIRFLOW_ADMIN_PASSWORD` du `.env` |
+| Streamlit | http://localhost:8501 | — |
+| Snowsight | https://app.snowflake.com/ | User / Password Snowflake |
 
-Crée `postgres_bookshop` et `snowflake_bookshop` à partir du `.env`.
+### Premier run
 
-### 4. Déclencher le pipeline
-
-Interface Airflow : http://localhost:8080
-- User : `admin`
-- Password : celui défini dans `.env` (`AIRFLOW_ADMIN_PASSWORD`)
-
-Active le DAG `bookshop_pipeline` (toggle) puis clique ▶️ **Trigger DAG**.
-
-Ou en CLI :
-```bash
-docker compose exec airflow-webserver airflow dags trigger bookshop_pipeline
-```
-
-### 5. Voir le dashboard
-
-http://localhost:8501
+1. UI Airflow → DAG `bookshop_pipeline` → **▶ Trigger DAG**.
+2. Les 4 tâches passent au vert en ~35 s.
+3. Streamlit charge automatiquement les KPI depuis `BOOKSHOP.MARTS.OBT_SALES`.
 
 ---
 
-## 📘 Guides détaillés
+## 🗂 Arborescence
 
-| Guide | Contenu |
+```
+.
+├── airflow/
+│   ├── dags/bookshop_pipeline.py       # DAG unique, 4 PythonOperators
+│   ├── Dockerfile                      # Airflow + dbt dans venv isolé
+│   └── requirements-airflow.txt
+├── app/
+│   ├── config.py                       # Config Snowflake (timeouts, retries)
+│   ├── dashboard.py                    # Streamlit + Plotly
+│   ├── dbt_bookshop/                   # Projet dbt
+│   │   ├── models/
+│   │   │   ├── staging/                # stg_* (nettoyage)
+│   │   │   ├── warehouse/              # dim_*, fact_* (étoile)
+│   │   │   └── marts/                  # obt_sales (dénormalisée)
+│   │   ├── macros/generate_schema_name.sql
+│   │   └── profiles.yml.example
+│   └── Dockerfile
+├── sql/
+│   ├── postgres/                       # 01_schema.sql, 02_seed.sql (auto-init)
+│   └── snowflake/                      # 01_setup, 02_raw_tables, 03_verif
+├── scripts/
+│   ├── create_airflow_connections.sh   # Conn postgres_bookshop + snowflake_bookshop
+│   ├── seed_demo.py                    # Faker fr_FR — inject N clients/factures
+│   └── run_dbt.sh / run_dashboard.sh   # Scripts utilitaires
+├── tests/
+│   ├── test_dag.py                     # DAG integrity + RAW_TABLES
+│   └── test_dashboard_config.py        # Timeouts/retries defaults
+├── docker-compose.yml
+├── Makefile                            # up, down, logs, dbt, reset-demo
+├── pyproject.toml                      # Config pytest + ruff
+├── requirements.txt
+└── .github/workflows/ci.yml            # lint + pytest + dbt parse
+```
+
+---
+
+## 🛠 Commandes Makefile
+
+```bash
+make up            # Démarre toute la stack
+make down          # Arrête sans supprimer les volumes
+make reset-demo    # Purge tout (⚠ volumes) et recrée
+make logs          # Tail des logs des 4 services
+make conns         # (Re)crée les Airflow connections postgres/snowflake
+make dbt           # Lance dbt build hors Airflow (debug rapide)
+make dashboard     # Lance Streamlit hors Docker (si Python local prêt)
+make check         # Vérifie l'environnement (docker, .env, ports)
+```
+
+---
+
+## 📊 Modèle de données
+
+### Source PostgreSQL (`bookshop_source`)
+
+| Table | Rôle |
 |---|---|
-| [docs/setup_snowflake.md](docs/setup_snowflake.md) | Créer un compte Snowflake trial, récupérer l'account identifier, tester la connexion |
-| [docs/setup_local.md](docs/setup_local.md) | Lancement sans Docker (venv + Postgres local + dbt CLI) |
-| [docs/demo_execution.md](docs/demo_execution.md) | Déroulé complet d'une exécution de démo |
-| [docs/data_dictionary.md](docs/data_dictionary.md) | Dictionnaire des tables RAW / WAREHOUSE / MARTS |
-| [docs/hypotheses_modele.md](docs/hypotheses_modele.md) | Hypothèses sur le schéma source |
-| [docs/architecture.mmd](docs/architecture.mmd) | Diagramme d'architecture (Mermaid) |
-| [docs/rapport_projet.md](docs/rapport_projet.md) | Rapport académique complet |
+| `category` | Catégories de livres |
+| `books` | Catalogue (ISBN, prix) |
+| `customers` | Clients (nom, email, ville, pays) |
+| `factures` | Entêtes (total, payé, date) |
+| `ventes` | Lignes de facture (book_id, qte, pu) |
+
+### Entrepôt Snowflake (`BOOKSHOP`)
+
+| Schéma | Contenu | Type |
+|---|---|---|
+| `RAW` | Copie brute des 5 tables Postgres | Tables |
+| `STAGGING` | `stg_*` nettoyage + typage | Vues |
+| `WAREHOUSE` | `dim_*` + `fact_*` + agrégats temporels | Tables |
+| `MARTS` | `obt_sales` dénormalisée pour le dashboard | Table |
+
+> **Note** : le nommage `STAGGING` (double G) est conservé tel quel par choix projet.
+> La macro `generate_schema_name` garantit l'absence de préfixe `RAW_`.
 
 ---
 
-## 🔄 Flux du DAG `bookshop_pipeline`
+## 🎬 Démo avancée — injection de données
 
-```
-create_bookshop_structures  →  ingest_postgres_to_snowflake  →  ensure_dbt_profile  →  dbt_build
-         │                              │                             │                    │
-         │                              │                             │                    └─ dbt build (staging → warehouse → marts)
-         │                              │                             └─ copie profiles.yml.example si besoin
-         │                              └─ truncate RAW + insert lignes Postgres
-         └─ crée DB, schemas, tables RAW
-```
-
----
-
-## 🛠️ Commandes utiles (Makefile)
-
-| Commande | Effet |
-|---|---|
-| `make check` | Vérifications rapides (syntaxe) |
-| `make up` | Build + démarre tous les services |
-| `make init` | Rejoue uniquement l'init Airflow |
-| `make conns` | Crée les connexions Airflow |
-| `make down` | Stoppe les services (garde les volumes) |
-| `make reset-demo` | Détruit **tout** (volumes inclus) et redémarre à zéro |
-| `make logs` | Tail des logs des services principaux |
-| `make dbt` | Lance `dbt debug` + `dbt build` en local |
-| `make dashboard` | Lance Streamlit en local |
-
----
-
-## 🧪 Tests & CI
+Pendant la soutenance, enrichir la source en live pour montrer la chaîne réagir :
 
 ```bash
-pytest                              # tests (DAG, dashboard config)
-ruff check app airflow/dags tests   # lint
+# 50 clients + 200 factures + ~500 ventes via Faker (locale fr_FR)
+python3 scripts/seed_demo.py --customers 50 --factures 200
+
+# Re-trigger le pipeline
+docker compose exec -T airflow-webserver airflow dags trigger bookshop_pipeline
+
+# Rafraîchir le dashboard (touche R) → les KPI bougent
 ```
 
-Le workflow [.github/workflows/ci.yml](.github/workflows/ci.yml) exécute lint + pytest + `dbt parse` sur chaque push et PR.
+Runbook complet dans `docs/demo_runbook.md` (non versionné).
 
 ---
 
-## 🩺 Dépannage
+## ✅ Tests & CI
+
+```bash
+ruff check app airflow/dags tests
+pytest
+cd app/dbt_bookshop && dbt parse --profiles-dir .
+```
+
+GitHub Actions exécute automatiquement ces 3 étapes sur chaque push / PR :
+[Actions](https://github.com/Msdev224/big-data-/actions).
+
+---
+
+## 🛡 Sécurité
+
+- `.env` est **gitignoré** — aucun secret n'atterrit sur GitHub.
+- `.env.example` ne contient que des valeurs `change-me`.
+- Fernet key Airflow obligatoire → chiffrement des connections/variables.
+- Mot de passe admin Airflow aléatoire (à générer à la première install).
+- Auth Snowflake par mot de passe en dev — migration clé RSA prévue pour la prod.
+
+---
+
+## 🩺 Dépannage express
 
 <details>
-<summary><b>Airflow refuse de démarrer / connexions illisibles</b></summary>
+<summary><b>Port 5432 déjà occupé</b></summary>
 
-`AIRFLOW__CORE__FERNET_KEY` est vide ou invalide dans `.env`. Génère :
+Postgres local sur l'hôte. Le projet utilise déjà `5433` côté hôte — vérifier `.env`
+et `lsof -i :5433`. Si conflit persistant : changer `POSTGRES_PORT` dans `.env`.
+</details>
+
+<details>
+<summary><b>DAG import error / red triangle</b></summary>
+
 ```bash
-python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+docker compose exec airflow-scheduler airflow dags list-import-errors
+docker compose logs --tail=80 airflow-scheduler
 ```
 </details>
 
 <details>
-<summary><b>Port 5432 déjà utilisé</b></summary>
+<summary><b>Dashboard : "BOOKSHOP.MARTS.OBT_SALES does not exist"</b></summary>
 
-Un autre Postgres tourne sur ton poste. Change `POSTGRES_PORT=5433` dans `.env`.
+dbt a créé `RAW_MARTS` au lieu de `MARTS`. Vérifier que
+`app/dbt_bookshop/macros/generate_schema_name.sql` existe et contient la macro
+de surcharge. Relancer le DAG.
 </details>
 
 <details>
-<summary><b>Dashboard : <code>OperationalError 250001</code> Snowflake</b></summary>
+<summary><b>Snowflake OCSP / timeout</b></summary>
 
-Connexion instable. Augmente dans `.env` :
-```env
+Augmenter les timeouts dans `.env` :
+```
 SNOWFLAKE_LOGIN_TIMEOUT=60
 SNOWFLAKE_NETWORK_TIMEOUT=120
 SNOWFLAKE_MAX_RETRIES=5
@@ -202,47 +234,28 @@ SNOWFLAKE_MAX_RETRIES=5
 </details>
 
 <details>
-<summary><b>Le DAG n'apparaît pas dans l'UI</b></summary>
+<summary><b>Snowsight : "This session does not have a current database"</b></summary>
 
-Vérifie que le volume `./airflow/dags` est monté et que le fichier compile :
-```bash
-docker compose exec airflow-scheduler python -c "import bookshop_pipeline"
+Ajouter en haut du worksheet :
+```sql
+USE ROLE ACCOUNTADMIN;
+USE WAREHOUSE COMPUTE_WH;
+USE DATABASE BOOKSHOP;
 ```
-Et regarde les logs : `docker compose logs airflow-scheduler | tail`.
-</details>
-
-<details>
-<summary><b>Erreur dbt <code>Profile bookshop not found</code></b></summary>
-
-Le DAG recopie `profiles.yml.example` automatiquement. En local il faut le faire manuellement :
-```bash
-cp app/dbt_bookshop/profiles.yml.example app/dbt_bookshop/profiles.yml
-```
-</details>
-
-<details>
-<summary><b>Les connexions Airflow disparaissent après <code>make reset-demo</code></b></summary>
-
-C'est attendu (volumes détruits). Relance `make conns`.
-</details>
-
-<details>
-<summary><b>Conflit de dépendances pip pendant <code>make up</code></b></summary>
-
-Le Dockerfile Airflow utilise les **constraints officielles Airflow** + un **venv isolé pour dbt** pour éviter les conflits `protobuf` / `pandas`. Si tu modifies `requirements-airflow.txt`, garde ce découpage.
 </details>
 
 ---
 
-## 🔐 Sécurité
+## 🧭 Perspectives
 
-- `.env` est dans `.gitignore` → **ne jamais commiter**
-- Les mots de passe par défaut de `.env.example` sont des placeholders `change-me`
-- La Fernet key Airflow est **obligatoire** et doit être unique par environnement
-- Pour la prod Snowflake, utiliser **key-pair auth** plutôt qu'un mot de passe (voir [docs/setup_snowflake.md](docs/setup_snowflake.md) §Avancé)
+- **CDC** avec Debezium ou Snowpipe Streaming (remplacer le `TRUNCATE + INSERT`).
+- **Alerting** : hooks `on_failure_callback` vers Sentry / Slack.
+- **Sécurité** : auth Snowflake par clé RSA, secrets via Vault / AWS SSM.
+- **Catalog** : `dbt docs generate` + publication Datahub / OpenMetadata.
+- **Infra** : migration vers MWAA / Astronomer pour la HA.
 
 ---
 
-## 📜 Licence / Auteur
+## 📄 Licence & auteur
 
-Projet académique M2 Big Data — libre d'usage pédagogique.
+Projet académique non distribué — **Mamadou Saidou Bah**, Master 2 Big Data, 2026.
