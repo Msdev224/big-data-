@@ -1,0 +1,8 @@
+flowchart LR
+    A["PostgreSQL local\n(category, books, customers, factures, ventes)"] --> B["Airflow\nIngestion + orchestration"]
+    B --> C["Snowflake RAW"]
+    C --> D["dbt - STAGGING"]
+    D --> E["dbt - WAREHOUSE"]
+    E --> F["dbt - MARTS\nobt_sales"]
+    E --> G["Streamlit Dashboard"]
+    F --> G
